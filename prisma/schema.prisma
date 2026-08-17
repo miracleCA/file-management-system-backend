@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+
+enum FileStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+
+  folders Folder[]
+  files   File[]
+  shares  Share[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Folder {
+  id     String @id @default(uuid())
+  name   String
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // null means this folder is at the user's root.
+  parentId String?
+  parent   Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderHierarchy")
+
+  files File[]
+
+  // Soft delete.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, parentId])
+  @@index([userId, deletedAt])
+}
+
+model File {
+  id String @id @default(uuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Optional because files can exist at the root.
+  folderId String?
+  folder   Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  filename    String
+  size        BigInt
+  contentType String?
+
+  // The object's location inside MinIO/S3.
+  storageKey String @unique
+
+  status FileStatus @default(PENDING)
+
+  // Soft delete.
+  deletedAt DateTime?
+
+  shares Share[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, folderId])
+  @@index([userId, deletedAt])
+  @@index([folderId, deletedAt])
+}
+
+
+model Share {
+  id String @id @default(uuid())
+
+  fileId String
+  file   File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  tokenHash String @unique
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([fileId])
+  @@index([expiresAt])
+}
+
